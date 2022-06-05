@@ -61,7 +61,7 @@ class MapPopupActivity : AppCompatActivity() {
     }
 
     private fun initRouteCoordinates() {
-        // Create a list to store our line coordinates.
+        // Create a list to store our line coordinates.Toriko no Chigiri
         routeCoordinates = ArrayList()
         for (m in mapPoints) {
             routeCoordinates.add(Point.fromLngLat(m.locLongitude, m.locLatitude))

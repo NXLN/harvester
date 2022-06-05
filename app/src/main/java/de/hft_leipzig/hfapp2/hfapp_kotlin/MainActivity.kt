@@ -18,6 +18,7 @@ import android.view.View
 import android.widget.*
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface
 import kotlin.collections.ArrayList
+import kotlinx.android.synthetic.main.measurement_row.*
 
 class MainActivity : AppCompatActivity() {
     var myService: MeasurementService? = null
@@ -57,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         return maxIdx
     }
 
-    private fun getSnrIndex(sinrVal: Int): Int {
+    private fun getSnrIndex(sinrVal: Double): Int {
         val range: ArrayList<Int> = arrayListOf(-13,  -1,  11,  23,  35)
         var idx = 0
         for (r in range) {
@@ -86,15 +87,33 @@ class MainActivity : AppCompatActivity() {
             }
 
             val measurements = myService?.lastMeasurements
+            Log.i("measurements","val measurements = "+measurements.toString())
             for (mp in measurements!!) {
                 if (mp.mcc != "0" && mp.mnc != "0" && mp.mnc != NAN.toString() && mp.mnc != NAN.toString()) {
+                    if (mp.ta != NAN){
+                        Log.i("measurements_achtung","ACHTUNG HERE IS TAAA!!!!: "+mp.ta.toString()+" ON THE "+mp.band.toString()+" BAND")
+                    }
+                    if (mp.rssi == NAN){
+                        continue
+                    }
                     val tvNetwork = findViewById<TextView>(R.id.tvNetwork)
                     val tvLatitude = findViewById<TextView>(R.id.tvLatitude)
                     val tvLongitude = findViewById<TextView>(R.id.tvLongitude)
                     val tvAccuracy = findViewById<TextView>(R.id.tvAccuracy)
                     val tvSpeed = findViewById<TextView>(R.id.tvSpeed)
-                    val tvTime = findViewById<TextView>(R.id.tvTime)
 
+
+
+                    val tvCqi = findViewById<TextView>(R.id.tvCqi)
+                    val tvTa = findViewById<TextView>(R.id.tvTa)
+                    val tvRssnr = findViewById<TextView>(R.id.tvRssnr)
+                    val tvRssi = findViewById<TextView>(R.id.tvRssi)
+                    val tvRsrp = findViewById<TextView>(R.id.tvRsrp)
+                    val tvRsrq = findViewById<TextView>(R.id.tvRsrq)
+//                    val tvDbm = findViewById<TextView>(R.id.tvDbm)
+                    val tvBw = findViewById<TextView>(R.id.tvBw)
+
+                    val tvTime = findViewById<TextView>(R.id.tvTime)
                     tvTime.text = mp.datetime
                     tvNetwork.text = getString(R.string.meas_network_value, mp.strOrNan(mp.mcc), mp.strOrNan(mp.mnc))
                     if (mp.location != null) {
@@ -104,16 +123,31 @@ class MainActivity : AppCompatActivity() {
                         tvSpeed.text = getString(R.string.meas_accuracy_value, mp.location?.speed)
                     }
 
-                    val tvCqi = findViewById<TextView>(R.id.tvCqi)
-                    val tvRssnr = findViewById<TextView>(R.id.tvRssnr)
-                    val tvTa = findViewById<TextView>(R.id.tvTa)
-                    tvCqi.text = mp.strOrNan(mp.cqi)
-                    tvRssnr.text = mp.strOrNan(mp.rssnr)
-                    tvTa.text = mp.strOrNan(mp.ta)
+                    val tvLvl = findViewById<TextView>(R.id.tvLvl)
+                    val tvAvb2 = findViewById<TextView>(R.id.tvAvb2)
+                    val tvAvb3 = findViewById<TextView>(R.id.tvAvb3)
+                    val tvAvb4 = findViewById<TextView>(R.id.tvAvb4)
 
+                    tvCqi.text = mp.strOrNan(mp.cqi)
+                    if (mp.cqi != NAN) {
+                        tvTa.text = mp.strOrNan(mp.cqi)
+                    }
+                    tvRssnr.text = mp.strOrNan(mp.rssnr)
+                    if (mp.ta != NAN) {
+                        tvTa.text = mp.strOrNan(mp.ta)
+                    }
+                    tvRssi.text = mp.strOrNan(mp.rssi)
+                    tvRsrp.text = mp.strOrNan(mp.rsrp)
+                    tvRsrq.text = mp.strOrNan(mp.rsrq)
+//                    tvDbm.text = mp.strOrNan(mp.dbm)
+                    tvBw.text = mp.strOrNan(mp.bw)
+                    tvLvl.text = mp.strOrNan(mp.lvl)
+                    tvAvb2.text = mp.strOrNan(mp.avb2)
+                    tvAvb3.text = mp.strOrNan(mp.avb3)
+                    tvAvb4.text = mp.strOrNan(mp.avb4)
+                    
                     val idxActual = getSnrIndex(mp.rssnr)
                     val idxPredicted = predict(mp)
-
                     if (mp.rssnr < NAN) {
                         val tvActualClass = findViewById<TextView>(R.id.tvActualClass)
                         val tvPredictedClass = findViewById<TextView>(R.id.tvPredictedClass)
@@ -129,6 +163,9 @@ class MainActivity : AppCompatActivity() {
                 val tvRsrp = rowView.findViewById(R.id.tvRsrp) as TextView
                 val tvRsrq = rowView.findViewById(R.id.tvRsrq) as TextView
                 val tvAsu = rowView.findViewById(R.id.tvAsu) as TextView
+
+
+
                 tvType.text = mp.strOrNan(mp.type)
                 tvBand.text = mp.strOrNan(mp.band)
                 tvPci.text = mp.strOrNan(mp.pci)
@@ -231,7 +268,7 @@ class MainActivity : AppCompatActivity() {
             getMeasurements()
             mainHandler.postDelayed(
                 backgroundTask,
-                1000
+                500
             )
         }
         if (getPermissions(this, ALL_PERMISSIONS, PERMISSIONS_REQUEST_ALL)) {
@@ -245,10 +282,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onResume() {
-        mainHandler.postDelayed(backgroundTask, 1000)
+        mainHandler.postDelayed(backgroundTask, 500)
         Handler().postDelayed({
             updateRecordingButtons()
-        }, 2000)
+        }, 1000)
         super.onResume()
     }
 
@@ -274,6 +311,16 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         super.onOptionsItemSelected(item)
         when {
+            item.itemId == R.id.save -> {
+                if (isServiceRunning(MeasurementService::class.java)) {
+                    if (!hasPermissions(this, arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE))) {
+                        getPermissions(this, arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                            PERMISSIONS_REQUEST_WRITE_EXTERNAL)
+                        return false
+                    }
+                    myService?.saveMeasurement()
+                }
+            }
             item.itemId == R.id.about -> {
                 val intent = Intent(applicationContext, AboutActivity::class.java)
                 startActivity(intent)
