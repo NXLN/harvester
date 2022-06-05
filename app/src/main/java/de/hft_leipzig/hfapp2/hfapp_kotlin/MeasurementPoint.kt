@@ -6,9 +6,9 @@ import android.location.Location
 import android.os.Build
 import android.os.SystemClock
 import android.telephony.*
+import android.util.Log
 import android.widget.TableRow
 import android.widget.TextView
-import androidx.annotation.RequiresApi
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
@@ -78,7 +78,8 @@ data class MeasurementPoint(val uid: Int) {
     var rsrp: Int = NAN
     var rsrq: Int = NAN
     var asu: Int = NAN
-    var rssnr: Int = NAN
+    var rssnr: Double = NAN.toDouble()
+    var lvl: Int = NAN
     var ta: Int = NAN
     var cqi: Int = NAN
     var ci: Int = NAN
@@ -89,7 +90,13 @@ data class MeasurementPoint(val uid: Int) {
     var locSpeed: Float = NAN_F
     var locSpeedAcc: Float = NAN_F
     var rssi: Int = NAN
-    var bw: Int = NAN
+    var bw: Double = NAN.toDouble()
+    var dbm: Int = NAN
+    var avb2: Int = NAN
+    var avb3: Double = NAN_F.toDouble()
+    var avb4: Double = NAN_F.toDouble()
+
+
     @Ignore var location: Location? = null
 
     fun toCSVRow(sep: String? = ";"): String {
@@ -116,7 +123,10 @@ data class MeasurementPoint(val uid: Int) {
         res += locSpeed.toString() + sep
         res += locSpeedAcc.toString() + sep
         res += rssi.toString() + sep
-        res += bw.toString()
+        res += bw.toString()  + sep
+        res += avb2.toString() + sep
+        res += avb3.toString()  + sep
+        res += avb4.toString()
         return res
     }
 
@@ -151,6 +161,9 @@ data class MeasurementPoint(val uid: Int) {
         return if (valueToConv == NAN) "NaN" else valueToConv.toString()
     }
 
+    fun strOrNan(valueToConv: Double): String {
+        return if (valueToConv == NAN.toDouble()) "NaN" else valueToConv.toString()
+    }
 
     fun strOrNan(valueToConv: String): String {
         return if (valueToConv == NAN.toString()) "NaN" else valueToConv
@@ -167,7 +180,6 @@ data class MeasurementPoint(val uid: Int) {
         columns.add(createTextViewCell(context, strOrNan(status), rightPadding, fontSize))
         columns.add(createTextViewCell(context, strOrNan(band), rightPadding, fontSize))
         columns.add(createTextViewCell(context, strOrNan(pci), rightPadding, fontSize))
-
         columns.add(createTextViewCell(context, strOrNan(rsrp), rightPadding, fontSize))
         columns.add(createTextViewCell(context, strOrNan(rsrq), rightPadding, fontSize))
         columns.add(createTextViewCell(context, strOrNan(rssnr), rightPadding, fontSize))
@@ -181,7 +193,6 @@ data class MeasurementPoint(val uid: Int) {
         return row
     }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun parseCellInfo(cellInfo: CellInfo) {
         val millisecondsSinceEvent = (SystemClock.elapsedRealtimeNanos() - cellInfo.timeStamp) / 1000000L
         val timeOfEvent = System.currentTimeMillis() - millisecondsSinceEvent
@@ -209,108 +220,120 @@ data class MeasurementPoint(val uid: Int) {
             }
         }
 
-        when (cellInfo) {
-            is CellInfoNr -> {
-                type = "NR"
-                if (cellInfo.cellSignalStrength is CellSignalStrengthNr) {
-                    rsrp = (cellInfo.cellSignalStrength as CellSignalStrengthNr).ssRsrp
-                    rsrq = (cellInfo.cellSignalStrength as CellSignalStrengthNr).ssRsrq
-                    rssnr = (cellInfo.cellSignalStrength as CellSignalStrengthNr).ssSinr
-                    asu = (cellInfo.cellSignalStrength as CellSignalStrengthNr).asuLevel
-                    pci = (cellInfo.cellIdentity as CellIdentityNr).pci
-                    band = (cellInfo.cellIdentity as CellIdentityNr).nrarfcn
-                    mcc = (cellInfo.cellIdentity as CellIdentityNr).mccString.toString()
-                    mnc = (cellInfo.cellIdentity as CellIdentityNr).mncString.toString()
-                }
-            }
-            is CellInfoLte -> {
-                type = "LTE"
-                band = cellInfo.cellIdentity.earfcn
-                pci = cellInfo.cellIdentity.pci
-                asu = cellInfo.cellSignalStrength.asuLevel
-                ci = cellInfo.cellIdentity.ci
-                ta = cellInfo.cellSignalStrength.timingAdvance
+        if (status == "Registered") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES .Q){
+                when (cellInfo) {
+                    is CellInfoNr -> {
+                        type = "NR"
+                        if (cellInfo.cellSignalStrength is CellSignalStrengthNr) {
+                            rsrp = (cellInfo.cellSignalStrength as CellSignalStrengthNr).ssRsrp
+                            rsrq = (cellInfo.cellSignalStrength as CellSignalStrengthNr).ssRsrq
+                            rssnr = (cellInfo.cellSignalStrength as CellSignalStrengthNr).ssSinr.toDouble()
+                            pci = (cellInfo.cellIdentity as CellIdentityNr).pci
+                            band = (cellInfo.cellIdentity as CellIdentityNr).nrarfcn
+                            mcc = (cellInfo.cellIdentity as CellIdentityNr).mccString.toString()
+                            mnc = (cellInfo.cellIdentity as CellIdentityNr).mccString.toString()
+                        }
+                    }
+                    is CellInfoLte -> {
+                        Log.i("measurements","cellinfo: "+cellInfo.toString())
+                        type = "LTE"
+                        band = cellInfo.cellIdentity.earfcn
+                        pci = cellInfo.cellIdentity.pci
+                        asu = cellInfo.cellSignalStrength.asuLevel
+                        ci = cellInfo.cellIdentity.ci
+                        ta = cellInfo.cellSignalStrength.timingAdvance
+                        dbm = cellInfo.cellSignalStrength.dbm
 
-                if (Build.VERSION.SDK_INT >= 26) {
-                    rsrp = cellInfo.cellSignalStrength.rsrp
-                    rsrq = cellInfo.cellSignalStrength.rsrq
-                    rssnr = cellInfo.cellSignalStrength.rssnr
-                    cqi = cellInfo.cellSignalStrength.cqi
-                }
-                if (Build.VERSION.SDK_INT >= 29) {
-                    rssi = cellInfo.cellSignalStrength.rssi
-                }
-                if (Build.VERSION.SDK_INT >= 28) {
-                    mcc = if (cellInfo.cellIdentity.mccString != null) {
-                        cellInfo.cellIdentity.mccString!!
-                    } else {
-                        NAN.toString()
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            rsrp = cellInfo.cellSignalStrength.rsrp
+                            rsrq = cellInfo.cellSignalStrength.rsrq
+                            //rssnr = cellInfo.cellSignalStrength.rssnr.toDouble()
+                            cqi = cellInfo.cellSignalStrength.cqi
+                        }
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            rssi = cellInfo.cellSignalStrength.rssi
+                        }
+                        if (Build.VERSION.SDK_INT >= 28) {
+                            bw = cellInfo.cellIdentity.bandwidth/1000.0
+                            when (bw) {
+                                5.0 -> avb2 = 20
+                                10.0 -> avb2 = 50
+                                15.0 -> avb2 = 75
+                                20.0 -> avb2 = 100
+                                else -> avb2 = NAN
+                            }
+                            mcc = if (cellInfo.cellIdentity.mccString != null) {
+                                cellInfo.cellIdentity.mccString!!
+                            } else {
+                                NAN.toString()
+                            }
+                            mnc = if (cellInfo.cellIdentity.mncString != null) {
+                                cellInfo.cellIdentity.mncString!!
+                            } else {
+                                NAN.toString()
+                            }
+                        } else {
+                            mcc = cellInfo.cellIdentity.mcc.toString()
+                            mnc = cellInfo.cellIdentity.mnc.toString()
+                        }
                     }
-                    mnc = if (cellInfo.cellIdentity.mncString != null) {
-                        cellInfo.cellIdentity.mncString!!
-                    } else {
-                        NAN.toString()
-                    }
-                    bw = cellInfo.cellIdentity.bandwidth
-                } else {
-                    mcc = cellInfo.cellIdentity.mcc.toString()
-                    mnc = cellInfo.cellIdentity.mnc.toString()
-                }
-            }
-            is CellInfoWcdma ->  {
-                type = "WCDMA"
-                band = cellInfo.cellIdentity.uarfcn
-                rsrp = cellInfo.cellSignalStrength.dbm
-                asu = cellInfo.cellSignalStrength.asuLevel
-                ci = cellInfo.cellIdentity.cid
+                    is CellInfoWcdma ->  {
+                        type = "WCDMA"
+                        band = cellInfo.cellIdentity.uarfcn
+                        rsrp = cellInfo.cellSignalStrength.dbm
+                        asu = cellInfo.cellSignalStrength.asuLevel
+                        ci = cellInfo.cellIdentity.cid
 
-                if (Build.VERSION.SDK_INT >= 28) {
-                    mcc = if (cellInfo.cellIdentity.mccString != null) {
-                        cellInfo.cellIdentity.mccString!!
-                    } else {
-                        NAN.toString()
+                        if (Build.VERSION.SDK_INT >= 28) {
+                            mcc = if (cellInfo.cellIdentity.mccString != null) {
+                                cellInfo.cellIdentity.mccString!!
+                            } else {
+                                NAN.toString()
+                            }
+                            mnc = if (cellInfo.cellIdentity.mncString != null) {
+                                cellInfo.cellIdentity.mncString!!
+                            } else {
+                                NAN.toString()
+                            }
+                        } else {
+                            mcc = cellInfo.cellIdentity.mcc.toString()
+                            mnc = cellInfo.cellIdentity.mnc.toString()
+                        }
                     }
-                    mnc = if (cellInfo.cellIdentity.mncString != null) {
-                        cellInfo.cellIdentity.mncString!!
-                    } else {
-                        NAN.toString()
-                    }
-                } else {
-                    mcc = cellInfo.cellIdentity.mcc.toString()
-                    mnc = cellInfo.cellIdentity.mnc.toString()
-                }
-            }
-            is CellInfoGsm -> {
-                type = "GSM"
-                band = cellInfo.cellIdentity.arfcn
-                rsrp = cellInfo.cellSignalStrength.dbm
-                asu = cellInfo.cellSignalStrength.asuLevel
-                ci = cellInfo.cellIdentity.cid
+                    is CellInfoGsm -> {
+                        type = "GSM"
+                        band = cellInfo.cellIdentity.arfcn
+                        rsrp = cellInfo.cellSignalStrength.dbm
+                        asu = cellInfo.cellSignalStrength.asuLevel
+                        ci = cellInfo.cellIdentity.cid
 
-                if (Build.VERSION.SDK_INT >= 28) {
-                    mcc = if (cellInfo.cellIdentity.mccString != null) {
-                        cellInfo.cellIdentity.mccString!!
-                    } else {
-                        NAN.toString()
+                        if (Build.VERSION.SDK_INT >= 28) {
+                            mcc = if (cellInfo.cellIdentity.mccString != null) {
+                                cellInfo.cellIdentity.mccString!!
+                            } else {
+                                NAN.toString()
+                            }
+                            mnc = if (cellInfo.cellIdentity.mncString != null) {
+                                cellInfo.cellIdentity.mncString!!
+                            } else {
+                                NAN.toString()
+                            }
+                        } else {
+                            mcc = cellInfo.cellIdentity.mcc.toString()
+                            mnc = cellInfo.cellIdentity.mnc.toString()
+                        }
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            ta = cellInfo.cellSignalStrength.timingAdvance
+                        }
                     }
-                    mnc = if (cellInfo.cellIdentity.mncString != null) {
-                        cellInfo.cellIdentity.mncString!!
-                    } else {
-                        NAN.toString()
+                    is CellInfoCdma -> {
+                        type = "CDMA"
+                        asu = cellInfo.cellSignalStrength.asuLevel
+                        rsrp = cellInfo.cellSignalStrength.dbm
+                        ci = cellInfo.cellIdentity.basestationId
                     }
-                } else {
-                    mcc = cellInfo.cellIdentity.mcc.toString()
-                    mnc = cellInfo.cellIdentity.mnc.toString()
                 }
-                if (Build.VERSION.SDK_INT >= 26) {
-                    ta = cellInfo.cellSignalStrength.timingAdvance
-                }
-            }
-            is CellInfoCdma -> {
-                type = "CDMA"
-                asu = cellInfo.cellSignalStrength.asuLevel
-                rsrp = cellInfo.cellSignalStrength.dbm
-                ci = cellInfo.cellIdentity.basestationId
             }
         }
     }
